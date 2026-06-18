@@ -9,16 +9,17 @@ class DXFConverterApp:
     def __init__(self, root):
         self.root = root
         self.root.title("服装 CAD DXF 转 PDF 工具 (内置引擎版)")
-        self.root.geometry("650x400")
+        self.root.geometry("650x350")  # 砍掉一行配置后，高度收窄，更紧凑
         self.root.resizable(False, False)
 
         self.dxf_files = []
+        # 后台默默寻找引擎，不在界面上展示
         self.inkscape_path = self.auto_find_inkscape()
 
         self.create_widgets()
 
     def auto_find_inkscape(self):
-        """优先寻找打包集成在软件内部的 Inkscape 引擎"""
+        """后台静默寻找打包集成在软件内部的 Inkscape 引擎"""
         if hasattr(sys, '_MEIPASS'):
             internal_path = os.path.join(sys._MEIPASS, "Inkscape", "bin", "inkscape.exe")
             if os.path.exists(internal_path):
@@ -39,56 +40,33 @@ class DXFConverterApp:
         return ""
 
     def create_widgets(self):
-        # ---- 1. Inkscape 路径设置 ----
-        path_frame = ttk.LabelFrame(self.root, text=" 1. 核心渲染引擎配置 (Inkscape) ", padding=10)
-        path_frame.pack(fill="x", padx=15, pady=10)
-
-        is_internal = " (已完美集成在软件内部)" if "bin" in self.inkscape_path else ""
-        self.lbl_inkscape = tk.Label(path_frame, text="引擎状态: " + ("已就绪" + is_internal if self.inkscape_path else "未找到，请手动选择"))
-        self.lbl_inkscape.config(fg="green" if self.inkscape_path else "red")
-        self.lbl_inkscape.pack(anchor="w")
-
-        entry_frame = tk.Frame(path_frame)
-        entry_frame.pack(fill="x", pady=5)
-
-        self.ent_inkscape = tk.Entry(entry_frame, width=60)
-        self.ent_inkscape.insert(0, self.inkscape_path)
-        self.ent_inkscape.pack(side="left", fill="x", expand=True, padx=(0, 5))
-
-        btn_browse_ink = tk.Button(entry_frame, text="浏览...", command=self.browse_inkscape)
-        btn_browse_ink.pack(side="right")
-
-        # ---- 2. 文件选择区 ----
-        file_frame = ttk.LabelFrame(self.root, text=" 2. 选择服装 DXF 文件 (支持多选) ", padding=10)
-        file_frame.pack(fill="both", expand=True, padx=15, pady=5)
-
-        btn_select_dxf = tk.Button(file_frame, text="添加 DXF 文件", command=self.browse_dxf, bg="#4CAF50", fg="white")
-        btn_select_dxf.pack(anchor="w", pady=(0, 5))
-
-        self.file_listbox = tk.Listbox(file_frame, selectmode=tk.EXTENDED)
-        self.file_listbox.pack(fill="both", expand=True)
-
-        # ---- 3. 转换控制区 ----
+        # ---- 1. 底部转换控制区 (固定在最下方，确保有开始转换按钮) ----
         control_frame = ttk.Frame(self.root, padding=10)
-        control_frame.pack(fill="x", padx=15, pady=10)
+        control_frame.pack(side="bottom", fill="x", padx=15, pady=10)
 
         self.progress = ttk.Progressbar(control_frame, orient="horizontal", mode="determinate")
         self.progress.pack(side="left", fill="x", expand=True, padx=(0, 10))
 
-        self.btn_convert = tk.Button(control_frame, text="开始转换", width=15, command=self.start_conversion_thread, bg="#2196F3", fg="white", state="disabled")
+        # 如果后台没找到引擎，默认禁用按钮
+        btn_state = "normal" if self.inkscape_path else "disabled"
+        self.btn_convert = tk.Button(control_frame, text="开始转换", width=15, height=1, 
+                                     command=self.start_conversion_thread, bg="#2196F3", fg="white", state=btn_state)
         self.btn_convert.pack(side="right")
-        
-        if self.inkscape_path:
-            self.btn_convert.config(state="normal")
 
-    def browse_inkscape(self):
-        path = filedialog.askopenfilename(title="选择 inkscape.exe", filetypes=[("执行文件", "*.exe")])
-        if path:
-            self.inkscape_path = path
-            self.ent_inkscape.delete(0, tk.END)
-            self.ent_inkscape.insert(0, path)
-            self.lbl_inkscape.config(text="引擎状态: 已设置", fg="green")
-            self.btn_convert.config(state="normal")
+        # ---- 2. 中间文件选择区 (撑满剩下的上方所有空间) ----
+        file_frame = ttk.LabelFrame(self.root, text=" 选择服装 DXF 文件 (支持多选) ", padding=10)
+        file_frame.pack(side="top", fill="both", expand=True, padx=15, pady=15)
+
+        btn_select_dxf = tk.Button(file_frame, text="添加 DXF 文件", command=self.browse_dxf, bg="#4CAF50", fg="white")
+        btn_select_dxf.pack(anchor="w", pady=(0, 5))
+
+        # 带滚动条的文件列表
+        scrollbar = tk.Scrollbar(file_frame)
+        self.file_listbox = tk.Listbox(file_frame, selectmode=tk.EXTENDED, yscrollcommand=scrollbar.set)
+        
+        scrollbar.pack(side="right", fill="y")
+        self.file_listbox.pack(side="left", fill="both", expand=True)
+        scrollbar.config(command=self.file_listbox.yview)
 
     def browse_dxf(self):
         files = filedialog.askopenfilenames(title="选择 DXF 文件", filetypes=[("CAD DXF 文件", "*.dxf")])
@@ -97,30 +75,27 @@ class DXFConverterApp:
             self.file_listbox.delete(0, tk.END)
             for f in self.dxf_files:
                 self.file_listbox.insert(tk.END, os.path.basename(f))
+            
+            # 安全保障：如果添加了文件且后台引擎就绪，确保激活按钮
             if self.inkscape_path:
                 self.btn_convert.config(state="normal")
 
     def start_conversion_thread(self):
-        """在安全的主线程中做好所有 UI 状态拦截与初始化"""
+        if not self.inkscape_path:
+            messagebox.showerror("错误", "未检测到内置转换引擎，请确保打包完整！")
+            return
+
         if not self.dxf_files:
             messagebox.showwarning("提示", "请先添加需要转换的 DXF 文件！")
             return
-            
-        ink_exe = self.ent_inkscape.get()
-        if not os.path.exists(ink_exe):
-            messagebox.showerror("错误", "Inkscape 路径无效，请重新检查！")
-            return
 
-        # 主线程内安全操作进度条和按钮
         self.btn_convert.config(state="disabled")
-        self.progress["max"] = len(self.dxf_files)
+        self.progress["maximum"] = len(self.dxf_files)
         self.progress["value"] = 0
         
-        # 将获取到的确切路径作为参数投递进子线程，避免子线程去读取输入框
-        threading.Thread(target=self.convert_process, args=(ink_exe,), daemon=True).start()
+        threading.Thread(target=self.convert_process, args=(self.inkscape_path,), daemon=True).start()
 
     def convert_process(self, ink_exe):
-        """纯粹的后台计算与进程调用线程，不触碰任何 UI 组件"""
         total = len(self.dxf_files)
         success_count = 0
         
@@ -136,17 +111,14 @@ class DXFConverterApp:
             except Exception as e:
                 print(f"转换失败: {str(e)}")
                 
-            # 通过 after 跨线程安全更新进度条
             self.root.after(0, lambda v=i+1: self.set_progress(v))
 
-        # 转换彻底结束，通过 after 将弹窗和按钮复位指令安全地交还给主线程执行
         self.root.after(0, lambda: self.show_finish_message(success_count, total))
 
     def set_progress(self, value):
         self.progress["value"] = value
 
     def show_finish_message(self, success, total):
-        """在主线程中安全弹出提示框并恢复按钮可用状态"""
         messagebox.showinfo("完成", f"批量转换结束！\n成功: {success}/{total}")
         self.btn_convert.config(state="normal")
 
