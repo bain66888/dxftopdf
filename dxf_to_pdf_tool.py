@@ -9,11 +9,10 @@ class DXFConverterApp:
     def __init__(self, root):
         self.root = root
         self.root.title("服装 CAD DXF 转 PDF 工具 (内置引擎版)")
-        self.root.geometry("650x350")  # 砍掉一行配置后，高度收窄，更紧凑
+        self.root.geometry("650x350")
         self.root.resizable(False, False)
 
         self.dxf_files = []
-        # 后台默默寻找引擎，不在界面上展示
         self.inkscape_path = self.auto_find_inkscape()
 
         self.create_widgets()
@@ -40,27 +39,25 @@ class DXFConverterApp:
         return ""
 
     def create_widgets(self):
-        # ---- 1. 底部转换控制区 (固定在最下方，确保有开始转换按钮) ----
+        # ---- 1. 底部转换控制区 (固定在最下方) ----
         control_frame = ttk.Frame(self.root, padding=10)
         control_frame.pack(side="bottom", fill="x", padx=15, pady=10)
 
         self.progress = ttk.Progressbar(control_frame, orient="horizontal", mode="determinate")
         self.progress.pack(side="left", fill="x", expand=True, padx=(0, 10))
 
-        # 如果后台没找到引擎，默认禁用按钮
         btn_state = "normal" if self.inkscape_path else "disabled"
         self.btn_convert = tk.Button(control_frame, text="开始转换", width=15, height=1, 
                                      command=self.start_conversion_thread, bg="#2196F3", fg="white", state=btn_state)
         self.btn_convert.pack(side="right")
 
-        # ---- 2. 中间文件选择区 (撑满剩下的上方所有空间) ----
+        # ---- 2. 中间文件选择区 ----
         file_frame = ttk.LabelFrame(self.root, text=" 选择服装 DXF 文件 (支持多选) ", padding=10)
         file_frame.pack(side="top", fill="both", expand=True, padx=15, pady=15)
 
         btn_select_dxf = tk.Button(file_frame, text="添加 DXF 文件", command=self.browse_dxf, bg="#4CAF50", fg="white")
         btn_select_dxf.pack(anchor="w", pady=(0, 5))
 
-        # 带滚动条的文件列表
         scrollbar = tk.Scrollbar(file_frame)
         self.file_listbox = tk.Listbox(file_frame, selectmode=tk.EXTENDED, yscrollcommand=scrollbar.set)
         
@@ -76,7 +73,6 @@ class DXFConverterApp:
             for f in self.dxf_files:
                 self.file_listbox.insert(tk.END, os.path.basename(f))
             
-            # 安全保障：如果添加了文件且后台引擎就绪，确保激活按钮
             if self.inkscape_path:
                 self.btn_convert.config(state="normal")
 
@@ -101,13 +97,32 @@ class DXFConverterApp:
         
         for i, dxf_path in enumerate(self.dxf_files):
             pdf_path = os.path.splitext(dxf_path)[0] + ".pdf"
-            cmd = [ink_exe, dxf_path, f"--export-filename={pdf_path}"]
+            
+            # 【核心修复】：注入针对 CAD 图纸专门优化的命令行渲染参数
+            # --export-area-drawing: 强制只导出有线条/图纸的区域，防止因为视口巨大而产生空白。
+            # --export-margin=10: 在裁片图纸周围预留10像素间距，防止服装打版线条切边。
+            cmd = [
+                ink_exe, 
+                dxf_path, 
+                "--export-area-drawing",
+                "--export-margin=10",
+                f"--export-filename={pdf_path}"
+            ]
+            
             try:
                 startupinfo = subprocess.STARTUPINFO()
                 startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
                 result = subprocess.run(cmd, startupinfo=startupinfo, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                if result.returncode == 0:
+                
+                # 检查导出的文件是否存在且大小正常（避开1KB的空白文件）
+                if result.returncode == 0 and os.path.exists(pdf_path) and os.path.getsize(pdf_path) > 2048:
                     success_count += 1
+                else:
+                    # 如果添加参数后依然是极小的文件，尝试采取“无边框默认转换”备用逻辑
+                    fallback_cmd = [ink_exe, dxf_path, f"--export-filename={pdf_path}"]
+                    subprocess.run(fallback_cmd, startupinfo=startupinfo, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                    if os.path.exists(pdf_path):
+                        success_count += 1
             except Exception as e:
                 print(f"转换失败: {str(e)}")
                 
