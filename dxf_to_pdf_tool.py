@@ -19,19 +19,16 @@ class DXFConverterApp:
 
     def auto_find_inkscape(self):
         """优先寻找打包集成在软件内部的 Inkscape 引擎"""
-        # 1. 如果是通过 PyInstaller 打包运行的环境
         if hasattr(sys, '_MEIPASS'):
             internal_path = os.path.join(sys._MEIPASS, "Inkscape", "bin", "inkscape.exe")
             if os.path.exists(internal_path):
                 return internal_path
 
-        # 2. 检查当前 .exe 同级目录下是否存在 Inkscape 文件夹
         current_dir = os.path.dirname(sys.argv[0])
         local_path = os.path.join(current_dir, "Inkscape", "bin", "inkscape.exe")
         if os.path.exists(local_path):
             return local_path
 
-        # 3. 兜底方案：检查电脑本地默认安装路径
         common_paths = [
             r"C:\Program Files\Inkscape\bin\inkscape.exe",
             r"C:\Program Files\Inkscape\inkscape.exe",
@@ -43,7 +40,6 @@ class DXFConverterApp:
 
     def create_widgets(self):
         # ---- 1. Inkscape 路径设置 ----
-        # 修正：将 tk.LabelFrame 改为 ttk.LabelFrame 以完美支持 padding 属性
         path_frame = ttk.LabelFrame(self.root, text=" 1. 核心渲染引擎配置 (Inkscape) ", padding=10)
         path_frame.pack(fill="x", padx=15, pady=10)
 
@@ -63,7 +59,6 @@ class DXFConverterApp:
         btn_browse_ink.pack(side="right")
 
         # ---- 2. 文件选择区 ----
-        # 修正：将 tk.LabelFrame 改为 ttk.LabelFrame
         file_frame = ttk.LabelFrame(self.root, text=" 2. 选择服装 DXF 文件 (支持多选) ", padding=10)
         file_frame.pack(fill="both", expand=True, padx=15, pady=5)
 
@@ -74,7 +69,6 @@ class DXFConverterApp:
         self.file_listbox.pack(fill="both", expand=True)
 
         # ---- 3. 转换控制区 ----
-        # 修正：将 tk.Frame 改为 ttk.Frame
         control_frame = ttk.Frame(self.root, padding=10)
         control_frame.pack(fill="x", padx=15, pady=10)
 
@@ -107,22 +101,27 @@ class DXFConverterApp:
                 self.btn_convert.config(state="normal")
 
     def start_conversion_thread(self):
+        """在安全的主线程中做好所有 UI 状态拦截与初始化"""
         if not self.dxf_files:
             messagebox.showwarning("提示", "请先添加需要转换的 DXF 文件！")
             return
-        self.btn_convert.config(state="disabled")
-        threading.Thread(target=self.convert_process, daemon=True).start()
-
-    def convert_process(self):
+            
         ink_exe = self.ent_inkscape.get()
         if not os.path.exists(ink_exe):
-            messagebox.showerror("错误", "Inkscape 路径无效！")
-            self.root.after(0, lambda: self.btn_convert.config(state="normal"))
+            messagebox.showerror("错误", "Inkscape 路径无效，请重新检查！")
             return
 
-        total = len(self.dxf_files)
-        self.progress["max"] = total
+        # 主线程内安全操作进度条和按钮
+        self.btn_convert.config(state="disabled")
+        self.progress["max"] = len(self.dxf_files)
         self.progress["value"] = 0
+        
+        # 将获取到的确切路径作为参数投递进子线程，避免子线程去读取输入框
+        threading.Thread(target=self.convert_process, args=(ink_exe,), daemon=True).start()
+
+    def convert_process(self, ink_exe):
+        """纯粹的后台计算与进程调用线程，不触碰任何 UI 组件"""
+        total = len(self.dxf_files)
         success_count = 0
         
         for i, dxf_path in enumerate(self.dxf_files):
@@ -136,13 +135,21 @@ class DXFConverterApp:
                     success_count += 1
             except Exception as e:
                 print(f"转换失败: {str(e)}")
+                
+            # 通过 after 跨线程安全更新进度条
             self.root.after(0, lambda v=i+1: self.set_progress(v))
 
-        messagebox.showinfo("完成", f"批量转换结束！\n成功: {success_count}/{total}")
-        self.root.after(0, lambda: self.btn_convert.config(state="normal"))
+        # 转换彻底结束，通过 after 将弹窗和按钮复位指令安全地交还给主线程执行
+        self.root.after(0, lambda: self.show_finish_message(success_count, total))
 
     def set_progress(self, value):
         self.progress["value"] = value
+
+    def show_finish_message(self, success, total):
+        """在主线程中安全弹出提示框并恢复按钮可用状态"""
+        messagebox.showinfo("完成", f"批量转换结束！\n成功: {success}/{total}")
+        self.btn_convert.config(state="normal")
+
 
 if __name__ == "__main__":
     root = tk.Tk()
