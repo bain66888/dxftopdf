@@ -1,0 +1,58 @@
+name: Build CAD Tool with Inkscape
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  workflow_dispatch: # 支持手动点击按钮触发构建
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    # 1. 拉取你仓库里的代码
+    - name: Checkout Code
+      uses: actions/checkout@v4
+
+    # 2. 配置 Python 环境
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-with-version: '3.10'
+
+    # 3. 安装打包所需的工具
+    - name: Install Dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pyinstaller
+
+    # 4. 下载官方开源的 Inkscape 绿色免安装版 (7z压缩包)
+    - name: Download Inkscape Portable
+      run: |
+        echo "Downloading Inkscape..."
+        Invoke-WebRequest -Uri "https://media.inkscape.org/dl/resources/file/inkscape-1.3.2_2023-11-25_091e20e-x64.7z" -OutFile "inkscape.7z"
+
+    # 5. 解压 Inkscape 并规范化目录名称
+    - name: Extract Inkscape
+      run: |
+        echo "Extracting Inkscape..."
+        7z x inkscape.7z -oinkscape_temp
+        # 将内部解压出的真实目录重命名并移动到当前根目录的 Inkscape 文件夹
+        Move-Item -Path "inkscape_temp\inkscape" -Destination ".\Inkscape"
+
+    # 6. 使用 PyInstaller 进行封装，将 Inkscape 文件夹直接注入到软件目录中
+    - name: Build Executable with PyInstaller
+      run: |
+        pyinstaller --noconfirm --onedir --windowed --add-data "Inkscape;Inkscape" dxf_to_pdf_tool.py
+
+    # 7. 将生成的文件夹打包成统一的 .zip 压缩包
+    - name: Compress Release Folder
+      run: |
+        Compress-Archive -Path "dist\dxf_to_pdf_tool" -DestinationPath "dxf_to_pdf_tool_with_inkscape.zip"
+
+    # 8. 将打包好的成果物上传到 GitHub，供你下载
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: CAD-DXF-to-PDF-Tool
+        path: dxf_to_pdf_tool_with_inkscape.zip
