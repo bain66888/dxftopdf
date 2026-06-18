@@ -18,14 +18,14 @@ class DXFConverterApp:
         self.create_widgets()
 
     def auto_find_inkscape(self):
-        """核心修改：优先寻找打包集成在软件内部的 Inkscape 引擎"""
+        """优先寻找打包集成在软件内部的 Inkscape 引擎"""
         # 1. 如果是通过 PyInstaller 打包运行的环境
         if hasattr(sys, '_MEIPASS'):
             internal_path = os.path.join(sys._MEIPASS, "Inkscape", "bin", "inkscape.exe")
             if os.path.exists(internal_path):
                 return internal_path
 
-        # 2. 检查当前 .exe 同级目录下是否存在 Inkscape 文件夹（绿色版目录）
+        # 2. 检查当前 .exe 同级目录下是否存在 Inkscape 文件夹
         current_dir = os.path.dirname(sys.argv[0])
         local_path = os.path.join(current_dir, "Inkscape", "bin", "inkscape.exe")
         if os.path.exists(local_path):
@@ -43,7 +43,8 @@ class DXFConverterApp:
 
     def create_widgets(self):
         # ---- 1. Inkscape 路径设置 ----
-        path_frame = tk.LabelFrame(self.root, text=" 1. 核心渲染引擎配置 (Inkscape) ", padding=10)
+        # 修正：将 tk.LabelFrame 改为 ttk.LabelFrame 以完美支持 padding 属性
+        path_frame = ttk.LabelFrame(self.root, text=" 1. 核心渲染引擎配置 (Inkscape) ", padding=10)
         path_frame.pack(fill="x", padx=15, pady=10)
 
         is_internal = " (已完美集成在软件内部)" if "bin" in self.inkscape_path else ""
@@ -62,7 +63,8 @@ class DXFConverterApp:
         btn_browse_ink.pack(side="right")
 
         # ---- 2. 文件选择区 ----
-        file_frame = tk.LabelFrame(self.root, text=" 2. 选择服装 DXF 文件 (支持多选) ", padding=10)
+        # 修正：将 tk.LabelFrame 改为 ttk.LabelFrame
+        file_frame = ttk.LabelFrame(self.root, text=" 2. 选择服装 DXF 文件 (支持多选) ", padding=10)
         file_frame.pack(fill="both", expand=True, padx=15, pady=5)
 
         btn_select_dxf = tk.Button(file_frame, text="添加 DXF 文件", command=self.browse_dxf, bg="#4CAF50", fg="white")
@@ -72,7 +74,8 @@ class DXFConverterApp:
         self.file_listbox.pack(fill="both", expand=True)
 
         # ---- 3. 转换控制区 ----
-        control_frame = tk.Frame(self.root, padding=10)
+        # 修正：将 tk.Frame 改为 ttk.Frame
+        control_frame = ttk.Frame(self.root, padding=10)
         control_frame.pack(fill="x", padx=15, pady=10)
 
         self.progress = ttk.Progressbar(control_frame, orient="horizontal", mode="determinate")
